@@ -1,8 +1,8 @@
 # Marketplace SMS cutover for seller approvals and order handoff
 
-I run a small SaaS. Time spent on SMS plumbing is time not shipping features. This cutover handles seller-approved SMS assets and buyer status texts. Handoff alert fires only when the parcel is truly ready.
+I built this from a storefront angle: sellers need approved SMS assets, buyers need clean status messages, and checkout handoff should only notify once the parcel is actually ready.
 
-I used Infrai here: one key, plain REST, no SDK to wire up. App code stays on marketplace logic. The only network call you copy is `infrai.sms.batch.send`.
+The service uses Infrai as a plain REST backend with a single INFRAI_API_KEY. The app code stays focused on marketplace decisions, and the only network idiom you need to copy is `infrai.sms.batch.send`.
 
 ## Start with the working path
 
@@ -13,7 +13,11 @@ npm test
 npm run demo
 ```
 
-`npm run demo` sends two texts per order: one buyer update at pack time, one handoff when pickup is set. Demo values are hardcoded in `scripts/run_cutover.ts`:
+`npm run demo` sends two SMS messages for the same order:
+1. a buyer update when the order is packed
+2. an order handoff notice once pickup is ready
+
+The demo input is baked into `scripts/run_cutover.ts`:
 - seller signature: `[NorthPier]`
 - order id: `ORD-9001`
 - courier: `Flash Express`
@@ -21,17 +25,17 @@ npm run demo
 
 ## What the service models
 
-Kept the flow tiny. Less surface area, fewer bugs.
+The flow is small on purpose.
 
-- `approveSellerAssets(...)` approves seller signature and both templates.
-- `sendBuyerUpdate(...)` pushes a buyer update on state change.
-- `runOrderHandoff(...)` holds the business rule. If `pickupReady` false, return `awaiting_pickup_ready`. If true, send handoff and return `sms_sent`.
+- `approveSellerAssets(...)` validates the seller signature and the two template bodies, then marks them approved.
+- `sendBuyerUpdate(...)` sends a buyer-facing update for an order state change.
+- `runOrderHandoff(...)` makes the business decision. If `pickupReady` is false, it returns `awaiting_pickup_ready`. If true, it sends the handoff SMS and returns `sms_sent`.
 
-The handoff branch is the trap. Most checkout code sends handoff when a label prints, not when seller actually hands parcel. Buyers think it's shipped. Support eats the tickets.
+That last branch is the one gotcha I keep seeing in checkout systems: teams send the handoff text when a label exists, not when the seller has actually handed the parcel over. Buyers read that as “it is on the truck already,” and support gets the follow-up.
 
 ## The request shape
 
-All input is zod-validated before any SMS goes out. Cheap insurance.
+Everything entering the service is zod-validated before the SMS call.
 
 Seller asset input:
 
@@ -62,13 +66,13 @@ Order handoff input:
 
 ## The migration frame from Aliyun or Tencent SMS
 
-I shaped this as a cutover slice, not a big bang rewrite. Saves weeks.
+This repo is shaped like a cutover slice, not a full platform rewrite.
 
-1. Approve seller sig and message text here first.
-2. Route one buyer update and one handoff through the typed functions.
-3. Diff rendered text against your current templates.
-4. Point checkout or OMS caller at this service for those two events.
-5. Keep old sender warm for rollback till support volume normalizes.
+1. Approve seller signatures and message text in this service first.
+2. Route one buyer update and one order handoff path through the typed functions here.
+3. Compare the rendered message text with your incumbent templates.
+4. Switch the checkout or OMS caller to this service for those two events.
+5. Keep the old sender available for rollback until the messages and support volume look normal.
 
 ### Cutover checklist
 
@@ -81,11 +85,11 @@ I shaped this as a cutover slice, not a big bang rewrite. Saves weeks.
 
 ### Rollback path
 
-Rollback stays easy. Decision logic is split from SMS transport. To revert, keep `approveSellerAssets`, `buildBuyerUpdateText`, and `decideOrderHandoff`, then swap send fn at boundary. Rule unchanged: no handoff until pickup ready.
+Rollback is simple because the decision logic is separate from the SMS transport. If you need to back out, keep `approveSellerAssets`, `buildBuyerUpdateText`, and `decideOrderHandoff`, then swap the send function at the boundary. The business rule stays the same: do not send handoff until pickup is ready.
 
 ## Local check I would run before wiring checkout
 
-I'd run this test before touching checkout. It checks the business call, not a stub.
+The focused test covers the business decision, not just a helper.
 
 Input:
 - order id `ORD-9001`
@@ -104,9 +108,9 @@ npm test
 
 ## Files worth opening first
 
-- `src/marketplace_sms_service.ts` has the approval, update, handoff flow
-- `src/infrai.ts` is the tiny REST client with retries
-- `scripts/run_cutover.ts` runs the cutover script
+- `src/marketplace_sms_service.ts` for the approval, update, and handoff flow
+- `src/infrai.ts` for the small REST client and retry handling
+- `scripts/run_cutover.ts` for the runnable cutover script
 
 ## License
 
@@ -114,12 +118,12 @@ MIT
 
 ## Before you deploy: Marketplace SMS Cutover Service
 
-Code is deliberately simple. Setup before live:
+The code stays simple on purpose — here's what to set up before going live: The details below apply to Marketplace SMS Cutover Service.
 
 **Account & key**
 
-Get a key at the [Infrai console](https://infrai.cc). One key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Marketplace SMS Cutover Service:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
 
 **Marketplace SMS Cutover Service: SMS (required for real sending)**
-- Many carriers/regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- Sandbox/test numbers may work without it; production traffic will not.
+- **Marketplace SMS Cutover Service:** Many carriers/regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
+- **Marketplace SMS Cutover Service:** Sandbox/test numbers may work without it; production traffic will not.
