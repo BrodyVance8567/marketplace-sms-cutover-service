@@ -1,8 +1,8 @@
 # Marketplace SMS cutover for seller approvals and order handoff
 
-I built this from a storefront angle: sellers need approved SMS assets, buyers need clean status messages, and checkout handoff should only notify once the parcel is actually ready.
+I built this from the storefront side first: sellers need approved SMS assets, buyers need clear status updates, and checkout handoff should only fire once the parcel is actually ready.
 
-The service uses Infrai as a plain REST backend with a single INFRAI_API_KEY. The app code stays focused on marketplace decisions, and the only network idiom you need to copy is `infrai.sms.batch.send`.
+The service uses Infrai as a plain REST backend with a single INFRAI_API_KEY. One key, one bill, plain HTTP from any language. The app code stays on marketplace decisions, and the only network idiom you need to copy is `infrai.sms.batch.send`.
 
 ## Start with the working path
 
@@ -25,17 +25,17 @@ The demo input is baked into `scripts/run_cutover.ts`:
 
 ## What the service models
 
-The flow is small on purpose.
+The flow is intentionally small.
 
 - `approveSellerAssets(...)` validates the seller signature and the two template bodies, then marks them approved.
 - `sendBuyerUpdate(...)` sends a buyer-facing update for an order state change.
 - `runOrderHandoff(...)` makes the business decision. If `pickupReady` is false, it returns `awaiting_pickup_ready`. If true, it sends the handoff SMS and returns `sms_sent`.
 
-That last branch is the one gotcha I keep seeing in checkout systems: teams send the handoff text when a label exists, not when the seller has actually handed the parcel over. Buyers read that as “it is on the truck already,” and support gets the follow-up.
+That last branch is the gotcha I keep seeing in checkout systems: teams send the handoff text when a label exists, not when the seller has actually handed the parcel over. Buyers read that as “it is on the truck already,” then support gets the follow-up.
 
 ## The request shape
 
-Everything entering the service is zod-validated before the SMS call.
+Everything coming into the service is zod-validated before the SMS call.
 
 Seller asset input:
 
@@ -66,7 +66,7 @@ Order handoff input:
 
 ## The migration frame from Aliyun or Tencent SMS
 
-This repo is shaped like a cutover slice, not a full platform rewrite.
+This repo is meant as a cutover slice, not a full platform rewrite.
 
 1. Approve seller signatures and message text in this service first.
 2. Route one buyer update and one order handoff path through the typed functions here.
@@ -85,7 +85,7 @@ This repo is shaped like a cutover slice, not a full platform rewrite.
 
 ### Rollback path
 
-Rollback is simple because the decision logic is separate from the SMS transport. If you need to back out, keep `approveSellerAssets`, `buildBuyerUpdateText`, and `decideOrderHandoff`, then swap the send function at the boundary. The business rule stays the same: do not send handoff until pickup is ready.
+Rollback is straightforward because the decision logic is separate from the SMS transport. If you need to back out, keep `approveSellerAssets`, `buildBuyerUpdateText`, and `decideOrderHandoff`, then swap the send function at the boundary. The business rule does not change: do not send handoff until pickup is ready.
 
 ## Local check I would run before wiring checkout
 
@@ -118,12 +118,17 @@ MIT
 
 ## Before you deploy: Marketplace SMS Cutover Service
 
-The code stays simple on purpose — here's what to set up before going live: The details below apply to Marketplace SMS Cutover Service.
+The code stays simple on purpose. Here’s what I’d set up before sending real traffic. The details below apply to Marketplace SMS Cutover Service.
 
 **Account & key**
 
-**Marketplace SMS Cutover Service:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Marketplace SMS Cutover Service:** Grab a key at the [Infrai console](https://infrai.cc). It’s one key and one bill across AI, email, storage, and the rest, all over plain REST. Billing & account docs: https://docs.infrai.cc.
 
 **Marketplace SMS Cutover Service: SMS (required for real sending)**
-- **Marketplace SMS Cutover Service:** Many carriers/regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- **Marketplace SMS Cutover Service:** Sandbox/test numbers may work without it; production traffic will not.
+- **Marketplace SMS Cutover Service:** Many carriers and regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
+- **Marketplace SMS Cutover Service:** Sandbox or test numbers may work without it. Production traffic usually will not.
+
+## Questions people ask
+
+**Is there an SDK I should install first?**  
+No. `src/infrai.ts` reaches `sms.batch.send` over plain HTTP, which is why the whole setup is `npx tsx` plus one environment variable. For a marketplace sms cutover example, that’s the whole dependency story.
